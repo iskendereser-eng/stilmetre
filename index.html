@@ -1,0 +1,432 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Davranış Gözlem Aracı — İnteraktif Tablo</title>
+  <style>
+    :root{--bg:#ffffff;--muted:#6b7280;--card:#f8fafc;--accent:#0ea5a4}
+    body{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial;line-height:1.4;margin:0;background:var(--bg);color:#111}
+    .wrap{max-width:1100px;margin:20px auto;padding:20px}
+    header{display:flex;align-items:center;gap:16px}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:6px 0 14px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    .card{background:var(--card);padding:14px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+    fieldset{border:0;margin:0;padding:0}
+    legend{font-weight:600;margin-bottom:8px}
+    .group{display:grid;grid-template-columns:1fr;gap:12px}
+    .option{display:flex;align-items:center;justify-content:space-between;background:#fff;padding:10px;border-radius:8px;border:1px solid #e6eef0}
+    .option label{display:flex;align-items:center;gap:8px}
+    .option-text{text-align:center;font-weight:500;color:#374151}
+    .result{padding:12px;border-radius:10px;text-align:center}
+    .style-badge{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;color:#fff}
+    .red{background:#dc2626}
+    .yellow{background:#f59e0b;color:#111}
+    .blue{background:#2563eb}
+    .green{background:#16a34a}
+    .meta{font-size:13px;color:var(--muted);margin-top:8px}
+    .actions{display:flex;gap:8px;align-items:center;margin-top:12px}
+    button{padding:8px 10px;border-radius:8px;border:1px solid #d1d5db;background:#fff;cursor:pointer}
+    button.primary{background:var(--accent);color:#fff;border-color:transparent}
+    .small{font-size:13px}
+    .warn{color:#b91c1c;font-weight:600}
+    .footer{margin-top:16px;display:flex;gap:8px;justify-content:space-between;align-items:center}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+    .override{margin-top:8px;display:flex;gap:8px;align-items:center;justify-content:center}
+    .sr-only{position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap}
+    .log{margin-top:12px;font-size:13px;color:#374151}
+    textarea{width:100%;min-height:80px;padding:8px;border-radius:8px;border:1px solid #e5e7eb}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>StilMetre</h1>
+        <p class="lead">Sözlü ve sözsüz gözlemlere dayalı olarak <strong>Müdahalecilik</strong> ve <strong>Tepkisellik</strong> varyantlarını belirleyip sosyal stili gösterir.</p>
+      </div>
+    </header>
+
+    <form id="observerForm" aria-labelledby="formTitle">
+      <div class="grid">
+        <section class="card" aria-labelledby="intervTitle">
+          <h2 id="intervTitle">Müdahalecilik</h2>
+          <p class="meta">Her kriter için bir seçeneği işaretleyin (Söyleyen veya Soran).</p>
+          <fieldset>
+            <legend>Sözlü Davranışlar</legend>
+            <div class="group" role="group" aria-label="Müdahalecilik sözlü">
+              <div class="option">
+                <label><input type="radio" name="kelime" value="kelimeCok" data-group="soyleyen"> Çok</label>
+                <span class="option-text">Kelime Sayısı</span>
+                <label><input type="radio" name="kelime" value="kelimeAz" data-group="soran"> Az</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="hiz" value="hizli" data-group="soyleyen"> Hızlı</label>
+                <span class="option-text">Konuşma Hızı</span>
+                <label><input type="radio" name="hiz" value="yavas" data-group="soran"> Yavaş</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="ses" value="sesGuclu" data-group="soyleyen"> Güçlü</label>
+                <span class="option-text">Sesin Hacmi</span>
+                <label><input type="radio" name="ses" value="sesZayif" data-group="soran"> Zayıf</label>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset style="margin-top:10px">
+            <legend>Sözsüz Davranışlar</legend>
+            <div class="group" role="group" aria-label="Müdahalecilik sözsüz">
+              <div class="option">
+                <label><input type="radio" name="durus" value="durusIleri" data-group="soyleyen"> İleriye</label>
+                <span class="option-text">Duruş</span>
+                <label><input type="radio" name="durus" value="durusGeri" data-group="soran"> Geriye</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="goz" value="gozDogrudan" data-group="soyleyen"> Doğrudan</label>
+                <span class="option-text">Göz Teması</span>
+                <label><input type="radio" name="goz" value="gozDolayli" data-group="soran"> Dolaylı</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="eller" value="ellerEmredici" data-group="soyleyen"> Emredici</label>
+                <span class="option-text">Ellerin Kullanımı</span>
+                <label><input type="radio" name="eller" value="ellerRahat" data-group="soran"> Rahat</label>
+              </div>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="card" aria-labelledby="tepkTitle">
+          <h2 id="tepkTitle">Tepkisellik</h2>
+          <p class="meta">Her kriter için bir seçeneği işaretleyin (Düşük veya Yüksek).</p>
+          <fieldset>
+            <legend>Sözlü Davranışlar</legend>
+            <div class="group" role="group" aria-label="Tepkisellik sözlü">
+              <div class="option">
+                <label><input type="radio" name="odak" value="gorev" data-group="dusuk"> Görev</label>
+                <span class="option-text">Konuşma Odağı</span>
+                <label><input type="radio" name="odak" value="insan" data-group="yuksek"> İnsan</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="sesyapi" value="tekduze" data-group="dusuk"> Tek Düze</label>
+                <span class="option-text">Sesin Yapısı</span>
+                <label><input type="radio" name="sesyapi" value="inisCikis" data-group="yuksek"> İnişli Çıkışlı</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="icerik" value="icerikGercek" data-group="dusuk"> Gerçekler</label>
+                <span class="option-text">İçerik</span>
+                <label><input type="radio" name="icerik" value="icerikHikaye" data-group="yuksek"> Hikayeler</label>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset style="margin-top:10px">
+            <legend>Sözsüz Davranışlar</legend>
+            <div class="group" role="group" aria-label="Tepkisellik sözsüz">
+              <div class="option">
+                <label><input type="radio" name="durusTepk" value="durusSinirli" data-group="dusuk"> Sınırlı</label>
+                <span class="option-text">Duruş</span>
+                <label><input type="radio" name="durusTepk" value="durusRahat" data-group="yuksek"> Rahat</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="mimik" value="mimikKontrollu" data-group="dusuk"> Kontrollü</label>
+                <span class="option-text">Mimikler</span>
+                <label><input type="radio" name="mimik" value="mimikHareketli" data-group="yuksek"> Hareketli</label>
+              </div>
+              <div class="option">
+                <label><input type="radio" name="ellerTepk" value="ellerAz" data-group="dusuk"> Az</label>
+                <span class="option-text">Ellerin Kullanımı</span>
+                <label><input type="radio" name="ellerTepk" value="ellerCok" data-group="yuksek"> Çok</label>
+              </div>
+            </div>
+          </fieldset>
+        </section>
+      </div>
+
+      <section class="card" style="margin-top:16px">
+        <h2>Sonuç</h2>
+        <div id="resultArea">
+          <div class="result" id="resultCard" aria-live="polite">
+            <div id="intervResult"><strong>Müdahalecilik:</strong> <span id="intervLabel">—</span></div>
+            <div id="tepkResult"><strong>Tepkisellik:</strong> <span id="tepkLabel">—</span></div>
+            <div style="margin-top:8px" id="styleResult"><strong>Sosyal Stil:</strong> <span id="styleLabel">—</span></div>
+            <div class="meta" id="explain">Tüm kriterler için seçim yapıldığında sosyal stil gösterilir.</div>
+          </div>
+
+          <div class="override" aria-hidden="false">
+            <div class="small">Elle seçmek ister misiniz?</div>
+            <select id="manualInterv" aria-label="Manuel müdahalecilik seçimi">
+              <option value="">(otomatik)</option>
+              <option value="soyleyen">Söyleyen</option>
+              <option value="soran">Soran</option>
+            </select>
+            <select id="manualTepk" aria-label="Manuel tepkisellik seçimi">
+              <option value="">(otomatik)</option>
+              <option value="dusuk">Düşük</option>
+              <option value="yuksek">Yüksek</option>
+            </select>
+            <button type="button" id="applyManual">Uygula</button>
+            <button type="button" id="resetManual">Sıfırla</button>
+          </div>
+
+          <div class="actions">
+            <button type="button" id="saveLocal">Kaydet (LocalStorage)</button>
+            <button type="button" id="exportCSV">CSV'ye Dışa Aktar</button>
+            <button type="button" id="exportJSON">JSON'ye Dışa Aktar</button>
+            <button type="button" id="clear">Formu Temizle</button>
+          </div>
+
+          <div class="log" id="logArea" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:16px">
+        <h2>Notlar / Hızlı Kayıt</h2>
+        <label class="small">Gözlem açıklaması (opsiyonel)</label>
+        <textarea id="notes" placeholder="Kısa not ekleyin..."></textarea>
+      </section>
+
+      <div class="footer">
+        <div class="small">Erişilebilir: tüm inputlar label'lıdır. Klavye ile gezilebilir.</div>
+        <div class="small">Versiyon: <strong>HTML+VanillaJS</strong></div>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('observerForm');
+    const result = { müdahalecilik: null, tepkisellik: null, style: null, manualOverride: false };
+    const explain = document.getElementById('explain');
+    const intervLabel = document.getElementById('intervLabel');
+    const tepkLabel = document.getElementById('tepkLabel');
+    const styleLabel = document.getElementById('styleLabel');
+    const resultCard = document.getElementById('resultCard');
+    const logArea = document.getElementById('logArea');
+
+    const buckets = {
+      soyleyen: new Set(['kelimeCok', 'hizli', 'sesGuclu', 'durusIleri', 'gozDogrudan', 'ellerEmredici']),
+      soran: new Set(['kelimeAz', 'yavas', 'sesZayif', 'durusGeri', 'gozDolayli', 'ellerRahat']),
+      dusuk: new Set(['gorev', 'tekduze', 'icerikGercek', 'durusSinirli', 'mimikKontrollu', 'ellerAz']),
+      yuksek: new Set(['insan', 'inisCikis', 'icerikHikaye', 'durusRahat', 'mimikHareketli', 'ellerCok'])
+    };
+
+    const requiredFields = {
+      müdahalecilik: ['kelime', 'hiz', 'ses', 'durus', 'goz', 'eller'],
+      tepkisellik: ['odak', 'sesyapi', 'icerik', 'durusTepk', 'mimik', 'ellerTepk']
+    };
+
+    function collectSelections() {
+      return Array.from(form.querySelectorAll('input[type="radio"]:checked')).map(i => ({
+        name: i.name,
+        value: i.value,
+        group: i.dataset.group
+      }));
+    }
+
+    function scoreBucket(selections, bucketName) {
+      return selections.filter(s => buckets[bucketName].has(s.value)).length;
+    }
+
+    function allRequiredSelected() {
+      const selections = collectSelections();
+      const intervSelected = requiredFields.müdahalecilik.every(field =>
+        selections.some(s => s.name === field)
+      );
+      const tepkSelected = requiredFields.tepkisellik.every(field =>
+        selections.some(s => s.name === field)
+      );
+      return intervSelected && tepkSelected;
+    }
+
+    function decide() {
+      const sel = collectSelections();
+      const soyleyen = scoreBucket(sel.filter(s => s.group === 'soyleyen'), 'soyleyen');
+      const soran = scoreBucket(sel.filter(s => s.group === 'soran'), 'soran');
+      const dusuk = scoreBucket(sel.filter(s => s.group === 'dusuk'), 'dusuk');
+      const yuksek = scoreBucket(sel.filter(s => s.group === 'yuksek'), 'yuksek');
+
+      result.müdahalecilik = soyleyen > soran ? 'soyleyen' : soran > soyleyen ? 'soran' : null;
+      result.tepkisellik = yuksek > dusuk ? 'yuksek' : dusuk > yuksek ? 'dusuk' : null;
+
+      if (allRequiredSelected() && result.müdahalecilik && result.tepkisellik) {
+        result.style = mapStyle(result.müdahalecilik, result.tepkisellik);
+      } else {
+        result.style = null;
+      }
+      render();
+    }
+
+    function mapStyle(interv, tepk) {
+      if (!interv || !tepk) return null;
+      if (interv === 'soyleyen' && tepk === 'dusuk') return { label: 'Yönlendirici', color: 'red' };
+      if (interv === 'soyleyen' && tepk === 'yuksek') return { label: 'İfadeci', color: 'yellow' };
+      if (interv === 'soran' && tepk === 'dusuk') return { label: 'Analitik', color: 'blue' };
+      if (interv === 'soran' && tepk === 'yuksek') return { label: 'Candan', color: 'green' };
+      return null;
+    }
+
+    function render() {
+      intervLabel.textContent = result.müdahalecilik ? (result.müdahalecilik === 'soyleyen' ? 'Söyleyen' : 'Soran') : '— (Seçim eksik)';
+      tepkLabel.textContent = result.tepkisellik ? (result.tepkisellik === 'dusuk' ? 'Düşük' : 'Yüksek') : '— (Seçim eksik)';
+
+      styleLabel.innerHTML = '';
+      if (result.style && (allRequiredSelected() || result.manualOverride)) {
+        const span = document.createElement('span');
+        span.className = `style-badge ${result.style.color}`;
+        span.textContent = result.style.label;
+        styleLabel.appendChild(span);
+        explain.textContent = `Eşleşme: ${result.müdahalecilik || '—'} + ${result.tepkisellik || '—'} → ${result.style.label}`;
+      } else {
+        let message = 'Sosyal stil görmek için tüm kriterlerde bir seçim yapın.';
+        const sel = collectSelections();
+        const soyleyen = scoreBucket(sel.filter(s => s.group === 'soyleyen'), 'soyleyen');
+        const soran = scoreBucket(sel.filter(s => s.group === 'soran'), 'soran');
+        const dusuk = scoreBucket(sel.filter(s => s.group === 'dusuk'), 'dusuk');
+        const yuksek = scoreBucket(sel.filter(s => s.group === 'yuksek'), 'yuksek');
+        if (allRequiredSelected()) {
+          if (soyleyen === soran) message = 'Müdahalecilik için Söyleyen ve Soran eşit, birini öne çıkarın.';
+          else if (yuksek === dusuk) message = 'Tepkisellik için Yüksek ve Düşük eşit, birini öne çıkarın.';
+        }
+        explain.textContent = message;
+      }
+
+      resultCard.style.border = result.style && (allRequiredSelected() || result.manualOverride) ? '2px solid rgba(0,0,0,0.06)' : '1px dashed #f1f5f9';
+      logArea.textContent = `Seçim sayıları — Söyleyen: ${scoreBucket(collectSelections().filter(s => s.group === 'soyleyen'), 'soyleyen')}, Soran: ${scoreBucket(collectSelections().filter(s => s.group === 'soran'), 'soran')}, Düşük: ${scoreBucket(collectSelections().filter(s => s.group === 'dusuk'), 'dusuk')}, Yüksek: ${scoreBucket(collectSelections().filter(s => s.group === 'yuksek'), 'yuksek')}.`;
+    }
+
+    form.addEventListener('change', (e) => {
+      if (e.target.type === 'radio') {
+        result.manualOverride = false; // Radio değiştiğinde manuel override sıfırlanır
+        clearTimeout(window.debounceTimer);
+        window.debounceTimer = setTimeout(decide, 150);
+      }
+    });
+
+    document.getElementById('applyManual').addEventListener('click', () => {
+      const mi = document.getElementById('manualInterv').value;
+      const mt = document.getElementById('manualTepk').value;
+      if (mi || mt) {
+        result.manualOverride = true;
+        if (mi) result.müdahalecilik = mi;
+        if (mt) result.tepkisellik = mt;
+        result.style = mapStyle(result.müdahalecilik, result.tepkisellik);
+        form.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+      }
+      render();
+    });
+
+    document.getElementById('resetManual').addEventListener('click', () => {
+      document.getElementById('manualInterv').value = '';
+      document.getElementById('manualTepk').value = '';
+      form.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+      result.manualOverride = false;
+      result.müdahalecilik = null;
+      result.tepkisellik = null;
+      result.style = null;
+      render();
+    });
+
+    document.getElementById('clear').addEventListener('click', () => {
+      form.reset();
+      result.manualOverride = false;
+      result.müdahalecilik = null;
+      result.tepkisellik = null;
+      result.style = null;
+      render();
+    });
+
+    document.getElementById('saveLocal').addEventListener('click', () => {
+      const record = buildRecord();
+      const list = JSON.parse(localStorage.getItem('observations') || '[]');
+      list.push(record);
+      localStorage.setItem('observations', JSON.stringify(list));
+      alert(`Gözlem kaydedildi. Toplam kayıt: ${list.length}`);
+    });
+
+    function buildRecord() {
+      const sel = collectSelections();
+      return {
+        id: 'r-' + Date.now(),
+        timestamp: new Date().toISOString(),
+        selections: sel,
+        müdahalecilik: result.müdahalecilik,
+        tepkisellik: result.tepkisellik,
+        style: result.style ? result.style.label : null,
+        notes: document.getElementById('notes').value
+      };
+    }
+
+    document.getElementById('exportCSV').addEventListener('click', () => {
+      const rec = buildRecord();
+      const csv = toCSV([rec]);
+      downloadString(csv, 'text/csv', 'observation.csv');
+    });
+
+    function toCSV(arr) {
+      if (!arr.length) return '';
+      const keys = Object.keys(arr[0]);
+      const lines = [keys.join(',')];
+      for (const r of arr) {
+        const vals = keys.map(k => `"${typeof r[k] === 'string' ? r[k].replace(/"/g, '""') : r[k] === null ? '' : JSON.stringify(r[k])}"`);
+        lines.push(vals.join(','));
+      }
+      return lines.join('\n');
+    }
+
+    function downloadString(text, type, filename) {
+      const blob = new Blob([text], { type });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document.getElementById('exportJSON').addEventListener('click', () => {
+      const rec = buildRecord();
+      downloadString(JSON.stringify(rec, null, 2), 'application/json', 'observation.json');
+    });
+
+    decide();
+  </script>
+</body>
+</html>
