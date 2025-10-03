@@ -72,7 +72,6 @@
     .warn{color:#b91c1c;font-weight:600}
     .footer{margin-top:16px;display:flex;gap:8px;justify-content:space-between;align-items:center}
     @media (max-width:900px){.grid{grid-template-columns:1fr}}
-    .override{margin-top:8px;display:flex;gap:8px;align-items:center;justify-content:center}
     .sr-only{position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap}
     .log{margin-top:12px;font-size:13px;color:#374151}
     textarea{width:100%;min-height:80px;padding:8px;border-radius:8px;border:1px solid #e5e7eb}
@@ -192,26 +191,7 @@
             <div class="meta" id="explain">Tüm kriterler için seçim yapıldığında sosyal stil gösterilir.</div>
           </div>
 
-          <div class="override" aria-hidden="false">
-            <div class="small">Elle seçmek ister misiniz?</div>
-            <select id="manualInterv" aria-label="Manuel müdahalecilik seçimi">
-              <option value="">(otomatik)</option>
-              <option value="soyleyen">Söyleyen</option>
-              <option value="soran">Soran</option>
-            </select>
-            <select id="manualTepk" aria-label="Manuel tepkisellik seçimi">
-              <option value="">(otomatik)</option>
-              <option value="dusuk">Düşük</option>
-              <option value="yuksek">Yüksek</option>
-            </select>
-            <button type="button" id="applyManual">Uygula</button>
-            <button type="button" id="resetManual">Sıfırla</button>
-          </div>
-
           <div class="actions">
-            <button type="button" id="saveLocal">Kaydet (LocalStorage)</button>
-            <button type="button" id="exportCSV">CSV'ye Dışa Aktar</button>
-            <button type="button" id="exportJSON">JSON'ye Dışa Aktar</button>
             <button type="button" id="clear">Formu Temizle</button>
           </div>
 
@@ -234,7 +214,7 @@
 
   <script>
     const form = document.getElementById('observerForm');
-    const result = { müdahalecilik: null, tepkisellik: null, style: null, manualOverride: false };
+    const result = { müdahalecilik: null, tepkisellik: null, style: null };
     const explain = document.getElementById('explain');
     const intervLabel = document.getElementById('intervLabel');
     const tepkLabel = document.getElementById('tepkLabel');
@@ -309,7 +289,7 @@
       tepkLabel.textContent = result.tepkisellik ? (result.tepkisellik === 'dusuk' ? 'Düşük' : 'Yüksek') : '— (Seçim eksik)';
 
       styleLabel.innerHTML = '';
-      if (result.style && (allRequiredSelected() || result.manualOverride)) {
+      if (result.style && allRequiredSelected()) {
         const span = document.createElement('span');
         span.className = `style-badge ${result.style.color}`;
         span.textContent = result.style.label;
@@ -329,101 +309,23 @@
         explain.textContent = message;
       }
 
-      resultCard.style.border = result.style && (allRequiredSelected() || result.manualOverride) ? '2px solid rgba(0,0,0,0.06)' : '1px dashed #f1f5f9';
+      resultCard.style.border = result.style && allRequiredSelected() ? '2px solid rgba(0,0,0,0.06)' : '1px dashed #f1f5f9';
       logArea.textContent = `Seçim sayıları — Söyleyen: ${scoreBucket(collectSelections().filter(s => s.group === 'soyleyen'), 'soyleyen')}, Soran: ${scoreBucket(collectSelections().filter(s => s.group === 'soran'), 'soran')}, Düşük: ${scoreBucket(collectSelections().filter(s => s.group === 'dusuk'), 'dusuk')}, Yüksek: ${scoreBucket(collectSelections().filter(s => s.group === 'yuksek'), 'yuksek')}.`;
     }
 
     form.addEventListener('change', (e) => {
       if (e.target.type === 'radio') {
-        result.manualOverride = false; // Radio değiştiğinde manuel override sıfırlanır
         clearTimeout(window.debounceTimer);
         window.debounceTimer = setTimeout(decide, 150);
       }
     });
 
-    document.getElementById('applyManual').addEventListener('click', () => {
-      const mi = document.getElementById('manualInterv').value;
-      const mt = document.getElementById('manualTepk').value;
-      if (mi || mt) {
-        result.manualOverride = true;
-        if (mi) result.müdahalecilik = mi;
-        if (mt) result.tepkisellik = mt;
-        result.style = mapStyle(result.müdahalecilik, result.tepkisellik);
-        form.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
-      }
-      render();
-    });
-
-    document.getElementById('resetManual').addEventListener('click', () => {
-      document.getElementById('manualInterv').value = '';
-      document.getElementById('manualTepk').value = '';
-      form.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
-      result.manualOverride = false;
-      result.müdahalecilik = null;
-      result.tepkisellik = null;
-      result.style = null;
-      render();
-    });
-
     document.getElementById('clear').addEventListener('click', () => {
       form.reset();
-      result.manualOverride = false;
       result.müdahalecilik = null;
       result.tepkisellik = null;
       result.style = null;
       render();
-    });
-
-    document.getElementById('saveLocal').addEventListener('click', () => {
-      const record = buildRecord();
-      const list = JSON.parse(localStorage.getItem('observations') || '[]');
-      list.push(record);
-      localStorage.setItem('observations', JSON.stringify(list));
-      alert(`Gözlem kaydedildi. Toplam kayıt: ${list.length}`);
-    });
-
-    function buildRecord() {
-      const sel = collectSelections();
-      return {
-        id: 'r-' + Date.now(),
-        timestamp: new Date().toISOString(),
-        selections: sel,
-        müdahalecilik: result.müdahalecilik,
-        tepkisellik: result.tepkisellik,
-        style: result.style ? result.style.label : null,
-        notes: document.getElementById('notes').value
-      };
-    }
-
-    document.getElementById('exportCSV').addEventListener('click', () => {
-      const rec = buildRecord();
-      const csv = toCSV([rec]);
-      downloadString(csv, 'text/csv', 'observation.csv');
-    });
-
-    function toCSV(arr) {
-      if (!arr.length) return '';
-      const keys = Object.keys(arr[0]);
-      const lines = [keys.join(',')];
-      for (const r of arr) {
-        const vals = keys.map(k => `"${typeof r[k] === 'string' ? r[k].replace(/"/g, '""') : r[k] === null ? '' : JSON.stringify(r[k])}"`);
-        lines.push(vals.join(','));
-      }
-      return lines.join('\n');
-    }
-
-    function downloadString(text, type, filename) {
-      const blob = new Blob([text], { type });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
-
-    document.getElementById('exportJSON').addEventListener('click', () => {
-      const rec = buildRecord();
-      downloadString(JSON.stringify(rec, null, 2), 'application/json', 'observation.json');
     });
 
     decide();
